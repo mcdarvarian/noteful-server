@@ -4,34 +4,34 @@ const xss = require('xss');
 const FoldersService = require('./folder-service');
 
 const foldersRouter = express.Router();
-const bodyParser = express.json();
+const jsonParser = express.json();
 
 const serializeFolder = folder => ({
   id: folder.id,
-  folder_name: xss(folder.folder_name)
+  name: folder.name
 });
 
 foldersRouter
   .route('/')
-  .get((req, res, next) => {
+  .get((req, res) => {
     const knexInstance = req.app.get('db');
     FoldersService.getAllFolders(knexInstance)
       .then(folders => {
         res.json(folders.map(serializeFolder));
       })
-      .catch(next);
   })
-  .post(bodyParser, (req, res, next) => {
-    const { folder_name } = req.body;
-    const newFolder = { folder_name };
+  .post(jsonParser, (req, res, next) => {
+    const { id, name } = req.body;
+    const newFolder = { id, name };
 
     for (const [key, value] of Object.entries(newFolder)) {
       if (value == null) {
         return res.status(400).json({
-          error: { message: `Missing '${key}' in request body` }
+          error: { message: `Missing ${key} in request body` }
         });
       }
     }
+
     FoldersService.insertFolder(
       req.app.get('db'),
       newFolder
@@ -39,11 +39,12 @@ foldersRouter
       .then(folder => {
         res
           .status(201)
-          .location(path.posix.join(req.originalUrl + `/${folder.id}`))
+          .location(path.posix.join(req.originalUrl, `/${folder.id}`))
           .json(serializeFolder(folder));
       })
       .catch(next);
   });
+
 
 foldersRouter
   .route('/:folder_id')
@@ -55,13 +56,12 @@ foldersRouter
       .then(folder => {
         if (!folder) {
           return res.status(404).json({
-            error: { message: `Folder doesn't exist!` }
+            error: { message: 'Folder doesn\'t exist' }
           });
         }
         res.folder = folder;
         next();
       })
-      .catch(next);
   })
   .get((req, res, next) => {
     res.json(serializeFolder(res.folder));
@@ -71,28 +71,7 @@ foldersRouter
       req.app.get('db'),
       req.params.folder_id
     )
-      .then(() => {
-        res.status(204).end();
-      })
-      .catch(next);
-  })
-  .patch(bodyParser, (req, res, next) => {
-    const { folder_name } = req.body;
-    const folderToUpdate = { folder_name };
-    const numberOfValues = Object.values(folderToUpdate).filter(Boolean).length;
-    if (numberOfValues === 0) {
-      return res.status(400).json({
-        error: {
-          message: `Request body must contain a folder_name`
-        }
-      });
-    }
-    FoldersService.updateFolder(
-      req.app.get('db'),
-      req.params.folder_id,
-      folderToUpdate
-    )
-      .then(() => {
+      .then(numRowsAffected => {
         res.status(204).end();
       })
       .catch(next);

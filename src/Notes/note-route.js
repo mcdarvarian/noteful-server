@@ -1,20 +1,22 @@
+const path = require('path');
 const express = require('express');
 const xss = require('xss');
-NoteRouter = express.Router();
-const noteService = require('./note-service');
-const bodyParser = express.json();
+const NotesService = require('./note-service');
 
+const notesRouter = express.Router();
+const jsonParser = express.json();
 
 const serializeNote = note => ({
-    id: note.id,
-    note_name: xss(note.note_name),
-    modified: note.modified,
-    content: xss(note.content),
-    folderid: note.folderid
-  });
+  id: note.id,
+  name: note.name,
+  content: note.content,
+  modified: note.modified,
+  folderId: note.folderId
+});
 
-NoteRouter
-.get((req, res, next) => {
+notesRouter
+  .route('/')
+  .get((req, res, next) => {
     const knexInstance = req.app.get('db');
     NotesService.getAllNotes(knexInstance)
       .then(notes => {
@@ -22,14 +24,14 @@ NoteRouter
       })
       .catch(next);
   })
-  .post(bodyParser, (req, res, next) => {
-    const { note_name, modified, content, folderid } = req.body;
-    const newNote = { note_name, modified, content, folderid };
+  .post(jsonParser, (req, res, next) => {
+    const { id, name, content, modified, folderId } = req.body;
+    const newNote = { id, name, content, modified, folderId };
 
     for (const [key, value] of Object.entries(newNote))
-      if (value == null)
+      if (value === null)
         return res.status(400).json({
-          error: { message: `Missing '${key}' in request body` }
+          error: { message: `Missing ${key} in request body` }
         });
 
     NotesService.insertNote(
@@ -43,9 +45,9 @@ NoteRouter
           .json(serializeNote(note));
       })
       .catch(next);
-  });
+  })
 
-NoteRouter
+notesRouter
   .route('/:note_id')
   .all((req, res, next) => {
     NotesService.getById(
@@ -55,7 +57,7 @@ NoteRouter
       .then(note => {
         if (!note) {
           return res.status(404).json({
-            error: { message: 'Note doesn\'t exist!' }
+            error: { message: 'Note doesn\'t exist' }
           });
         }
         res.note = note;
@@ -71,32 +73,35 @@ NoteRouter
       req.app.get('db'),
       req.params.note_id
     )
-      .then(() => {
+      .then(numRowsAffected => {
         res.status(204).end();
       })
       .catch(next);
   })
-  .patch(bodyParser, (req, res, next) => {
-    const { note_name, modified, content, folderid } = req.body;
-    const noteToUpdate = { note_name, modified, content, folderid };
+  .patch(jsonParser, (req, res, next) => {
+    const { id, name, content, modified, folderId } = req.body;
+    const noteToUpdate = { id, name, content, modified, folderId };
 
     const numberOfValues = Object.values(noteToUpdate).filter(Boolean).length;
-    if (numberOfValues === 0)
+    if (numberOfValues === 0) {
       return res.status(400).json({
         error: {
-          message: 'Request body must contain note_name, modified, and folderid'
+          message: 'Request body must contain either \'text\' or \'date_commented\''
         }
       });
+    }
 
     NotesService.updateNote(
       req.app.get('db'),
       req.params.note_id,
       noteToUpdate
     )
-      .then(() => {
+      .then(numRowsAffected => {
         res.status(204).end();
       })
       .catch(next);
   });
 
-module.exports = NoteRouter;
+
+
+module.exports = notesRouter;
